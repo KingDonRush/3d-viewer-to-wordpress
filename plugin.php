@@ -64,7 +64,6 @@ class ThreeJS_Elementor_Viewer_Plugin {
         }
         
         require_once THREEJS_ELEMENTOR_PLUGIN_PATH . 'includes/enqueue.php';
-        require_once THREEJS_ELEMENTOR_PLUGIN_PATH . 'includes/smart-content-detector.php';
         require_once THREEJS_ELEMENTOR_PLUGIN_PATH . 'elementor/widget-threejs-viewer.php';
     }
     

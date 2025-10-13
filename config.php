@@ -42,9 +42,7 @@ class ThreeJS_Config {
             'timeout' => THREEJS_TIMEOUT,
             'draco_cdn' => THREEJS_DRACO_CDN,
             'three_cdn' => THREEJS_THREE_CDN,
-            'debug' => THREEJS_DEBUG,
-            'cache_enabled' => THREEJS_CACHE_ENABLED,
-            'cache_duration' => THREEJS_CACHE_DURATION
+            'debug' => THREEJS_DEBUG
         );
     }
     

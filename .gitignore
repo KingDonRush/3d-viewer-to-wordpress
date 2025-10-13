@@ -1,0 +1,10 @@
+# Listagem
+listagem_utf8.txt
+legacy_listagem_utf8.txt
+
+# VSCode Settings 
+.vscode/
+
+# MarkDowns específicos
+comandos.md
+documentação.md

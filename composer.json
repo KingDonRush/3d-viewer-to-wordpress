@@ -1,0 +1,26 @@
+{
+    "name": "guilherme/3d-viewer-to-elementor",
+    "description": "Plugin Elementor para visualização de modelos 3D (.glb/.gltf) no WordPress.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+      {
+        "name": "Guilherme Silva",
+        "email": "guilherme.manoelbbs@gmail.com"
+      }
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "autoload": {
+      "psr-4": {
+        "ViewerToElementor\\": "src/"
+      }
+    },
+    "require": {},
+    "scripts": {
+      "post-update-cmd": [
+        "@composer dump-autoload"
+    ]
+    }
+  }
+  

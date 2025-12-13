@@ -1,29 +1,32 @@
-/* ThreeJS Elementor 3D Viewer - Clean Build */
-
+/* 3D Viewer container */
+.viewer-container,
 .threejs-viewer-container {
     position: relative;
     width: 100%;
     height: 400px;
+    min-height: 200px;
     background-color: #f0f0f0;
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    min-height: 200px;
 }
 
-.threejs-canvas {
+.viewer-container .viewer-canvas,
+.threejs-viewer-container .threejs-canvas {
     width: 100%;
     height: 100%;
     display: block;
     cursor: grab;
 }
 
-.threejs-canvas:active {
+.viewer-container .viewer-canvas:active,
+.threejs-viewer-container .threejs-canvas:active {
     cursor: grabbing;
 }
 
 /* Loading */
-.threejs-loading {
+.viewer-container .viewer-loading,
+.threejs-viewer-container .threejs-loading {
     position: absolute;
     inset: 0;
     background-color: rgba(255, 255, 255, 0.9);
@@ -35,26 +38,29 @@
     transition: opacity 0.3s ease;
 }
 
-.threejs-loading.hidden {
+.viewer-container .viewer-loading.hidden,
+.threejs-viewer-container .threejs-loading.hidden {
     opacity: 0;
     pointer-events: none;
 }
 
-.threejs-spinner {
+.viewer-container .viewer-spinner,
+.threejs-viewer-container .threejs-spinner {
     width: 36px;
     height: 36px;
     border: 4px solid #eee;
     border-top: 4px solid #3498db;
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: viewer-spin 1s linear infinite;
     margin-bottom: 10px;
 }
 
-@keyframes spin {
+@keyframes viewer-spin {
     to { transform: rotate(360deg); }
 }
 
-.threejs-loading-text {
+.viewer-container .viewer-loading-text,
+.threejs-viewer-container .threejs-loading-text {
     color: #555;
     font-size: 14px;
     font-weight: 500;
@@ -62,8 +68,9 @@
     line-height: 1.4;
 }
 
-/* Error State */
-.threejs-error {
+/* Error */
+.viewer-container .viewer-error,
+.threejs-viewer-container .threejs-error {
     position: absolute;
     inset: 0;
     background-color: rgba(255, 255, 255, 0.95);
@@ -74,26 +81,44 @@
     z-index: 20;
     text-align: center;
     color: #e74c3c;
+    padding: 20px;
+    gap: 8px;
 }
 
-.threejs-error-icon {
+.viewer-container .viewer-error-icon,
+.threejs-viewer-container .threejs-error-icon {
     font-size: 28px;
-    margin-bottom: 10px;
 }
 
-.threejs-error-message {
+.viewer-container .viewer-error-message,
+.threejs-viewer-container .threejs-error-message {
     font-size: 14px;
-    max-width: 80%;
     line-height: 1.4;
 }
 
-/* Responsivo */
 @media (max-width: 768px) {
+    .viewer-container,
     .threejs-viewer-container {
         height: 300px;
     }
-    .threejs-loading-text,
-    .threejs-error-message {
+
+    .viewer-container .viewer-loading-text,
+    .viewer-container .viewer-error-message,
+    .threejs-viewer-container .threejs-loading-text,
+    .threejs-viewer-container .threejs-error-message {
         font-size: 12px;
     }
+}
+
+/* Elementor control feedback */
+.elementor-control-content .viewer-media-hint {
+    margin-top: 6px;
+    color: #555;
+    font-size: 13px;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+.elementor-control-content .viewer-media-hint.updated {
+    color: #0073aa;
+    font-weight: 500;
 }

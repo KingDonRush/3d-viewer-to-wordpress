@@ -1,5 +1,5 @@
 /**
- * Viewer Media Control - Elementor custom control com loading e UX melhorada
+ * Viewer Media Control - Elementor custom control com undo/Dynamic Tag awareness
  */
 (function ($, elementor) {
   const CONTROL_TYPE = 'viewer_media';
@@ -45,8 +45,15 @@
 
     initialize() {
       elementor.modules.controls.BaseData.prototype.initialize.apply(this, arguments);
+
       this.undoState = null;
       this.isUndoing = false;
+      this.pendingAttachment = null;
+      this.currentMedia = {
+        url: this.getControlValue() || '',
+        attachment: null
+      };
+
       this.elementSettingsModel =
         (typeof this.getElementSettingsModel === 'function'
           ? this.getElementSettingsModel()
@@ -56,14 +63,29 @@
         null;
 
       if (this.elementSettingsModel?.on) {
-        this.listenTo(this.elementSettingsModel, 'change:model_url', this.onModelUrlChange);
+        this.listenTo(
+          this.elementSettingsModel,
+          'change:model_url change:__dynamic__',
+          this.onElementSettingsChange
+        );
       }
 
-      this.currentMedia = {
-        url: this.getControlValue() || '',
-        attachment: null
-      };
-      this.pendingAttachment = null;
+      this.lastExternalSnapshot = this.getSettingsSnapshot();
+    },
+
+    updateModelUrlField(value) {
+      const panelView = elementor.getPanelView?.()?.getCurrentPageView?.();
+      const urlControl = panelView?.children?.find?.(
+        (child) => child.model?.get('name') === 'model_url'
+      );
+      if (!urlControl?.model?.set) {
+        return;
+      }
+
+      urlControl.model.set('value', value || '');
+      if (typeof urlControl.render === 'function') {
+        urlControl.render();
+      }
     },
 
     onReady() {
@@ -72,17 +94,17 @@
     },
 
     onValueChange() {
-      const attachment = this.pendingAttachment || null;
-      this.renderSelected(attachment);
-      this.renderClearState();
+      const attachment = this.pendingAttachment || this.currentMedia.attachment || null;
+      const value = this.getControlValue() || '';
 
-      const currentUrl = this.getControlValue();
       this.currentMedia = {
-        url: currentUrl,
-        attachment: currentUrl ? (attachment || this.currentMedia.attachment || null) : null
+        url: value,
+        attachment: value ? attachment : null
       };
 
       this.pendingAttachment = null;
+      this.renderSelected(attachment);
+      this.renderClearState();
     },
 
     getFrame() {
@@ -97,14 +119,8 @@
         library: { type: MEDIA_TYPES }
       });
 
-      this.frame.on('open', () => {
-        this.setLoading(true);
-      });
-
-      this.frame.on('close', () => {
-        this.setLoading(false);
-      });
-
+      this.frame.on('open', () => this.setLoading(true));
+      this.frame.on('close', () => this.setLoading(false));
       this.frame.on('select', () => {
         const attachment = this.frame.state().get('selection').first()?.toJSON();
         const url = attachment?.url || '';
@@ -112,17 +128,20 @@
         this.pendingAttachment = attachment || null;
         this.undoState = null;
 
+        this.isUndoing = true;
         if (this.elementSettingsModel?.set) {
-          this.isUndoing = true;
           this.elementSettingsModel.set('model_url', '');
-          this.isUndoing = false;
         }
+        this.clearDynamicValue();
+        this.isUndoing = false;
 
         this.setValue(url);
         this.currentMedia = { url, attachment: attachment || null };
         this.renderSelected(attachment);
         this.renderClearState();
 
+        this.updateModelUrlField('');
+        this.lastExternalSnapshot = this.getSettingsSnapshot();
         elementor.channels.editor.trigger('editor:dirty-state', true);
         elementor.channels.editor.trigger('editor:save:set-state', 'changes_pending');
       });
@@ -139,26 +158,37 @@
       event.preventDefault();
 
       if (this.undoState && this.undoState.mediaValue) {
-        const mediaValue = this.undoState.mediaValue;
-        const mediaAttachment = this.undoState.attachment || null;
-        const settingsModel = this.elementSettingsModel;
+        const { mediaValue, attachment } = this.undoState;
 
-        if (settingsModel?.set) {
-          this.isUndoing = true;
-          settingsModel.set('model_url', '');
-          this.isUndoing = false;
+        this.isUndoing = true;
+        if (this.elementSettingsModel?.set) {
+          this.elementSettingsModel.set('model_url', '');
         }
+        this.clearDynamicValue();
+        this.isUndoing = false;
 
-        this.pendingAttachment = mediaAttachment;
+        this.pendingAttachment = attachment || null;
         this.setValue(mediaValue);
-        this.currentMedia = { url: mediaValue, attachment: mediaAttachment };
-        this.clearUndoState();
+        this.currentMedia = { url: mediaValue, attachment: attachment || null };
+        this.undoState = null;
+        this.updateModelUrlField('');
+
+        this.renderSelected(attachment || null);
+        this.renderClearState();
+        this.lastExternalSnapshot = this.getSettingsSnapshot();
+
         elementor.channels.editor.trigger('editor:dirty-state', true);
         elementor.channels.editor.trigger('editor:save:set-state', 'changes_pending');
         return;
       }
 
       this.setValue('');
+      this.undoState = {
+        mediaValue: this.currentMedia.url || '',
+        attachment: this.currentMedia.attachment || null,
+        clearedFrom: '__manual_clear__'
+      };
+
       this.currentMedia = { url: '', attachment: null };
       this.renderSelected();
       this.renderClearState();
@@ -179,21 +209,30 @@
 
       const value = this.getControlValue();
       const info = this.getUndoInfo();
-      const fileData = attachment || this.currentMedia.attachment || info.attachment || null;
+      const externalSnapshot = this.lastExternalSnapshot || this.getSettingsSnapshot();
+      const externalActive = !!(externalSnapshot.dynamic || externalSnapshot.direct);
+      const fileData =
+        attachment ||
+        this.currentMedia.attachment ||
+        info.attachment ||
+        null;
 
       if (!value) {
-        const placeholder = this.model.get('placeholder') || elementor.translate('no_image_selected', 'Nenhum arquivo selecionado.');
-        this.ui.selected
-          .text(placeholder)
-          .addClass('is-empty');
-
-        if (info.cleared) {
-          this.ui.status
+        if (externalActive) {
+          this.ui.selected
             .text(elementor.translate('using_custom_url', 'Usando URL / Dynamic Tag do campo.'))
-            .addClass('viewer-media-status-active');
+            .removeClass('is-empty')
+            .addClass('viewer-media-using-tag');
         } else {
-          this.ui.status.text('').removeClass('viewer-media-status-active');
+          const placeholder =
+            this.model.get('placeholder') ||
+            elementor.translate('no_image_selected', 'Nenhum arquivo selecionado.');
+          this.ui.selected
+            .text(placeholder)
+            .addClass('is-empty')
+            .removeClass('viewer-media-using-tag');
         }
+        this.ui.status.text('').removeClass('viewer-media-status-active');
         return;
       }
 
@@ -203,7 +242,7 @@
 
       this.ui.selected
         .html(`<strong>${displayName}</strong>${helper}`)
-        .removeClass('is-empty');
+        .removeClass('is-empty viewer-media-using-tag');
 
       const mime = fileData?.mime || fileData?.type || fileData?.subtype || '';
       this.ui.status
@@ -217,7 +256,7 @@
       const undoActive = undoInfo.cleared && !!undoInfo.mediaValue;
       const label = undoActive
         ? elementor.translate('undo', 'Desfazer')
-        : (this.model.get('clear_label') || elementor.translate('clear', 'Limpar seleção'));
+        : (this.model.get('clear_label') || elementor.translate('clear', 'Clear selection'));
 
       this.ui.clear
         .toggleClass('is-visible', hasValue || undoActive)
@@ -225,44 +264,65 @@
         .text(label);
     },
 
-    onModelUrlChange(model, value) {
+    onElementSettingsChange() {
       if (this.isUndoing) {
+        this.lastExternalSnapshot = this.getSettingsSnapshot();
         return;
       }
 
-      const normalized = this.normalizeValue(value);
-      const currentMedia = this.currentMedia?.url || '';
+      const snapshot = this.getSettingsSnapshot();
+      this.lastExternalSnapshot = snapshot;
+      const combinedValue = snapshot.dynamic || snapshot.direct;
+      const currentMediaUrl = this.currentMedia.url || '';
 
-      if (!normalized) {
+      if (!combinedValue) {
         this.clearUndoState();
+
+        if (!this.getControlValue()) {
+          this.renderSelected();
+        }
         return;
       }
 
-      if (!currentMedia) {
+      if (currentMediaUrl) {
         this.undoState = {
+          mediaValue: currentMediaUrl,
+          attachment: this.currentMedia.attachment || null,
+          clearedFrom: combinedValue,
+          fromDynamic: !!snapshot.dynamic
+        };
+
+        this.isUndoing = true;
+        this.pendingAttachment = null;
+        if (this.getControlValue()) {
+          this.setValue('');
+        }
+        this.isUndoing = false;
+
+        this.currentMedia = { url: '', attachment: null };
+      } else {
+        this.undoState = this.undoState || {
           mediaValue: '',
           attachment: null,
-          clearedFrom: normalized
+          clearedFrom: combinedValue,
+          fromDynamic: !!snapshot.dynamic
         };
-        this.renderSelected();
-        this.renderClearState();
+      }
+
+      this.renderSelected();
+      this.renderClearState();
+    },
+
+    clearDynamicValue() {
+      if (!this.elementSettingsModel?.get || !this.elementSettingsModel.set) {
         return;
       }
 
-      this.undoState = {
-        mediaValue: currentMedia,
-        attachment: this.currentMedia?.attachment || null,
-        clearedFrom: normalized
-      };
-
-      this.isUndoing = true;
-      this.pendingAttachment = null;
-      this.setValue('');
-      this.isUndoing = false;
-
-      this.currentMedia = { url: '', attachment: null };
-      this.renderSelected();
-      this.renderClearState();
+      const dynamicMap = { ...(this.elementSettingsModel.get('__dynamic__') || {}) };
+      if (dynamicMap.model_url) {
+        delete dynamicMap.model_url;
+        this.elementSettingsModel.set('__dynamic__', dynamicMap);
+      }
     },
 
     normalizeValue(raw) {
@@ -292,7 +352,6 @@
       this.undoState = null;
       this.renderClearState();
       this.ui.status.text('').removeClass('viewer-media-status-active');
-      this.renderSelected();
     },
 
     getUndoInfo() {
@@ -301,6 +360,22 @@
         mediaValue: this.undoState?.mediaValue || '',
         attachment: this.undoState?.attachment || null
       };
+    },
+
+    getSettingsSnapshot() {
+      const model = this.elementSettingsModel;
+      if (!model?.get) {
+        return { direct: '', dynamic: '' };
+      }
+
+      const direct = this.normalizeValue(model.get('model_url'));
+      let dynamicValue = '';
+      const dynamicMap = model.get('__dynamic__');
+      if (dynamicMap && typeof dynamicMap === 'object' && dynamicMap.model_url) {
+        dynamicValue = this.normalizeValue(dynamicMap.model_url);
+      }
+
+      return { direct, dynamic: dynamicValue };
     }
   });
 
@@ -317,7 +392,6 @@
     $(window).on('elementor:init', registerControl);
   }
 
-  // Injeta template e estilos uma única vez
   if (!document.getElementById('tmpl-viewer-media-control')) {
     const template = document.createElement('script');
     template.type = 'text/html';
@@ -333,7 +407,7 @@
             <span class="viewer-media-spinner" aria-hidden="true"></span>
           </button>
           <button type="button" class="elementor-button elementor-button-link viewer-media-clear">
-            {{{ data.clear_label || elementor.translate('clear', 'Limpar seleção') }}}
+            {{{ data.clear_label || elementor.translate('clear', 'Clear selection') }}}
           </button>
         </div>
         <div class="viewer-media-selected">{{{ data.controlValue || data.placeholder || elementor.translate('no_image_selected', 'Nenhum arquivo selecionado.') }}}</div>
@@ -390,8 +464,8 @@
         pointer-events: auto;
       }
       .viewer-media-control .viewer-media-clear.viewer-media-undo {
-        color: var(--e-color-primary,#6d7882);
-        font-weight: 500;
+          color: var(--e-color-primary,#6d7882);
+          font-weight: 500;
       }
       .viewer-media-control .viewer-media-spinner {
         width: 16px;
@@ -421,6 +495,10 @@
       .viewer-media-control .viewer-media-selected.is-empty {
         color: var(--e-color-text-muted,#a3adb7);
         font-style: italic;
+      }
+      .viewer-media-control .viewer-media-selected.viewer-media-using-tag {
+        color: var(--e-color-primary,#6d7882);
+        font-weight: 600;
       }
       .viewer-media-control .viewer-media-selected strong {
         display: block;

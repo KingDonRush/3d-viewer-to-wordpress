@@ -1,0 +1,41 @@
+name: Elementor editor bug
+description: Track broken or unstable behavior inside the Elementor editor.
+title: "[Editor]: "
+labels: ["type:bug", "area:elementor", "status:needs-audit"]
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Broken behavior
+      description: What fails inside the Elementor editor?
+      placeholder: The widget renders, but controls stop responding after...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Console errors, screenshots, screen recordings, or logs.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: WordPress 6.x, Elementor 4.x, PHP 8.3, browser
+

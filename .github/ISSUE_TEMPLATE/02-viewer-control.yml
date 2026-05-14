@@ -1,0 +1,34 @@
+name: Viewer control or customization
+description: Propose a user-facing setting for the 3D viewer widget.
+title: "[Control]: "
+labels: ["type:feature", "area:elementor", "portfolio:evidence"]
+body:
+  - type: textarea
+    id: user_value
+    attributes:
+      label: User value
+      description: What does this control let a site builder do?
+    validations:
+      required: true
+  - type: textarea
+    id: control_design
+    attributes:
+      label: Elementor control design
+      description: Control type, default value, responsive behavior, and limits.
+    validations:
+      required: true
+  - type: textarea
+    id: frontend_effect
+    attributes:
+      label: Frontend effect
+      description: How should this affect the rendered model?
+  - type: textarea
+    id: qa
+    attributes:
+      label: QA checklist
+      value: |
+        - [ ] Editor preview works.
+        - [ ] Frontend render works.
+        - [ ] Mobile layout checked.
+        - [ ] No console errors.
+

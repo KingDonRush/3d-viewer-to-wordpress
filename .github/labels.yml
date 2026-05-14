@@ -1,0 +1,53 @@
+labels:
+  - name: type:bug
+    color: d73a4a
+    description: Something is broken or unstable.
+  - name: type:feature
+    color: a2eeef
+    description: New user-facing capability.
+  - name: type:refactor
+    color: cfd3d7
+    description: Internal improvement without intended behavior change.
+  - name: type:docs
+    color: 0075ca
+    description: Documentation, README, or case study work.
+  - name: type:qa
+    color: fbca04
+    description: Testing and verification work.
+  - name: area:elementor
+    color: 7057ff
+    description: Elementor editor, widget, controls, or preview behavior.
+  - name: area:wordpress
+    color: 0e8a16
+    description: WordPress hooks, uploads, plugin lifecycle, or admin.
+  - name: area:frontend
+    color: 1d76db
+    description: Public rendering, browser behavior, or UI.
+  - name: area:performance
+    color: f9d0c4
+    description: Loading, optimization, file size, or runtime cost.
+  - name: area:github
+    color: 5319e7
+    description: Repository management and GitHub surface.
+  - name: priority:p0
+    color: b60205
+    description: Blocks release or public portfolio use.
+  - name: priority:p1
+    color: d93f0b
+    description: Important for the next milestone.
+  - name: priority:p2
+    color: fbca04
+    description: Useful but not blocking.
+  - name: status:needs-audit
+    color: e4e669
+    description: Needs investigation before implementation.
+  - name: status:ready
+    color: 0e8a16
+    description: Ready to implement.
+  - name: status:blocked
+    color: b60205
+    description: Waiting on information or dependency.
+  - name: portfolio:evidence
+    color: 0052cc
+    description: Improves hiring proof, demo, or case study value.
+

@@ -1,0 +1,28 @@
+name: Performance or optimization
+description: Track model loading, asset size, optimization, and runtime cost.
+title: "[Performance]: "
+labels: ["type:refactor", "area:performance", "status:needs-audit"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is heavy, hardcoded, slow, or overengineered?
+    validations:
+      required: true
+  - type: textarea
+    id: measurement
+    attributes:
+      label: Measurement
+      description: File size, load time, network trace, or before/after metric.
+  - type: textarea
+    id: safer_design
+    attributes:
+      label: Safer design
+      description: What should replace the current approach?
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks
+      description: Compatibility, model quality, editor behavior, or regressions.
+

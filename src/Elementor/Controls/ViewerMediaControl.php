@@ -50,15 +50,17 @@ class ViewerMediaControl extends Base_Data_Control
         <div class="viewer-media-control">
             <div class="viewer-media-actions">
                 <button type="button" class="elementor-button elementor-button-secondary viewer-media-button">
-                    {{{ data.button_label }}}
+                    <span class="eicon-upload" aria-hidden="true"></span>
+                    <span class="viewer-media-button-text">{{ data.button_label }}</span>
+                    <span class="viewer-media-spinner" aria-hidden="true"></span>
                 </button>
                 <button type="button" class="elementor-button elementor-button-link viewer-media-clear">
-                    {{{ data.clear_label }}}
+                    {{ data.clear_label }}
                 </button>
             </div>
-            <div class="viewer-media-selected">{{{ data.controlValue || data.placeholder }}}</div>
+            <div class="viewer-media-selected">{{ data.placeholder }}</div>
+            <div class="viewer-media-status" aria-live="polite"></div>
         </div>
         <?php
     }
 }
-

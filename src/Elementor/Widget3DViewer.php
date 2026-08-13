@@ -94,10 +94,11 @@ class Widget3DViewer extends Widget_Base
         ]);
 
         $this->add_control('background_color', [
-            'label'     => esc_html__('Cor de fundo', '3d-viewer-to-elementor'),
-            'type'      => Controls_Manager::COLOR,
-            'default'   => '#f0f0f0',
-            'selectors' => [
+            'label'       => esc_html__('Cor de fundo', '3d-viewer-to-elementor'),
+            'type'        => Controls_Manager::COLOR,
+            'default'     => '#f0f0f0',
+            'render_type' => 'template',
+            'selectors'   => [
                 '{{WRAPPER}} .viewer-container' => 'background-color: {{VALUE}};',
             ],
         ]);
@@ -152,7 +153,7 @@ class Widget3DViewer extends Widget_Base
         ];
         ?>
         <div class="viewer-container" id="<?php echo esc_attr($widget_id); ?>"
-             data-viewer-config='<?php echo esc_attr(json_encode($viewer_data)); ?>'>
+             data-viewer-config='<?php echo esc_attr(wp_json_encode($viewer_data)); ?>'>
             <div class="viewer-loading">
                 <div class="viewer-spinner"></div>
                 <div class="viewer-loading-text"><?php echo esc_html__('Carregando modelo 3D...', '3d-viewer-to-elementor'); ?></div>
@@ -165,9 +166,43 @@ class Widget3DViewer extends Widget_Base
     protected function content_template(): void
     {
         ?>
-        <div class="viewer-container"
-             style="min-height:200px;border:2px dashed #ddd;display:flex;align-items:center;justify-content:center;background:#fafafa;border-radius:8px;">
-            <p style="color:#666;margin:0;"><?php echo esc_html__('3D Viewer — insira ou selecione a URL do modelo.', '3d-viewer-to-elementor'); ?></p>
+        <#
+        const rawModelUrl = settings.model_file || settings.model_url || '';
+        const modelUrl = typeof rawModelUrl === 'object'
+            ? (rawModelUrl.url || rawModelUrl.value || '')
+            : rawModelUrl;
+
+        if (!modelUrl) {
+            #>
+            <div class="viewer-container"
+                 style="min-height:200px;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;background:#fafafa;border-radius:8px;">
+                <p style="color:#666;margin:0;"><?php echo esc_html__('Selecione um modelo 3D (.zip/.glb/.gltf).', '3d-viewer-to-elementor'); ?></p>
+            </div>
+            <#
+            return;
+        }
+
+        const widgetId = 'viewer-' + view.getID();
+        const viewerData = {
+            widget_id: widgetId,
+            model_url: String(modelUrl),
+            auto_rotation: settings.auto_rotation === 'yes',
+            mouse_controls: settings.mouse_controls === 'yes',
+            background_color: settings.background_color || '#f0f0f0'
+        };
+
+        view.addRenderAttribute('viewer-container', {
+            class: 'viewer-container',
+            id: widgetId,
+            'data-viewer-config': JSON.stringify(viewerData)
+        });
+        #>
+        <div {{{ view.getRenderAttributeString('viewer-container') }}}>
+            <div class="viewer-loading">
+                <div class="viewer-spinner"></div>
+                <div class="viewer-loading-text"><?php echo esc_html__('Carregando modelo 3D...', '3d-viewer-to-elementor'); ?></div>
+            </div>
+            <canvas class="viewer-canvas"></canvas>
         </div>
         <?php
     }

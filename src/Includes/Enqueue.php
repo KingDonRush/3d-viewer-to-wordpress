@@ -12,6 +12,19 @@ defined('ABSPATH') || exit;
 
 class Enqueue
 {
+    private static function get_import_map_markup(): string
+    {
+        return '<script type="importmap">
+        {
+          "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/",
+            "jszip": "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm"
+          }
+        }
+        </script>';
+    }
+
     /**
      * Scripts e estilos para o FRONT-END e PREVIEW do Elementor
      */
@@ -28,15 +41,7 @@ class Enqueue
          * 🧩 Import Map — apenas onde o preview do widget é renderizado
          */
         add_action('wp_head', function () {
-            echo '<script type="importmap">
-            {
-              "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/",
-                "jszip": "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm"
-              }
-            }
-            </script>';
+            echo self::get_import_map_markup();
         });
 
         /**
@@ -52,7 +57,7 @@ class Enqueue
 
         // Força o script a ser tratado como módulo ES6
         add_filter('script_loader_tag', function ($tag, $handle, $src) {
-            if (in_array($handle, ['viewer-to-elementor-frontend', 'viewer-to-elementor-editor'], true)) {
+            if ($handle === 'viewer-to-elementor-frontend') {
                 return '<script type="module" src="' . esc_url($src) . '"></script>';
             }
             return $tag;
@@ -101,14 +106,6 @@ class Enqueue
             'viewer-to-elementor-admin',
             $plugin_url . 'assets/js/admin-upload.js',
             ['jquery', 'elementor-editor', 'wp-util'],
-            Config::VERSION,
-            true
-        );
-
-        wp_enqueue_script(
-            'viewer-to-elementor-editor',
-            $plugin_url . 'assets/js/viewer-editor.js',
-            ['elementor-editor'],
             Config::VERSION,
             true
         );

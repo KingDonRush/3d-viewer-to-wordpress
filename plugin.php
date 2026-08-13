@@ -72,7 +72,7 @@ final class Viewer_To_Elementor_Plugin
 
         // 🔹 Permitir upload de .zip e validar conteúdo
         add_filter('upload_mimes', [$this, 'allow_zip_upload']);
-        add_filter('wp_check_filetype_and_ext', [$this, 'force_zip_mime_detection'], 999, 4);
+        add_filter('wp_check_filetype_and_ext', [$this, 'force_zip_mime_detection'], 999, 5);
         add_filter('wp_handle_upload_prefilter', [$this, 'validate_zip_upload']);
     }
 
@@ -100,6 +100,8 @@ final class Viewer_To_Elementor_Plugin
         $mimes['octet-stream'] = 'application/octet-stream';
         $mimes['compressed'] = 'multipart/x-zip';
         $mimes['application/x-zip-compressed'] = 'application/x-zip-compressed';
+        $mimes['gltf'] = 'model/gltf+json';
+        $mimes['glb']  = 'model/gltf-binary';
 
         return $mimes;
     }
@@ -107,7 +109,7 @@ final class Viewer_To_Elementor_Plugin
     /**
      * Corrige a detecção MIME do WordPress para arquivos ZIP
      */
-    public function force_zip_mime_detection($data, $file, $filename, $mimes)
+    public function force_zip_mime_detection($data, $file, $filename, $mimes, $real_mime = false)
     {
         $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
@@ -118,7 +120,93 @@ final class Viewer_To_Elementor_Plugin
             error_log("[3D Viewer] force_zip_mime_detection(): MIME forçado para application/x-zip-compressed ({$filename})");
         }
 
+        if (in_array($ext, ['gltf', 'glb'], true) && is_string($file) && is_file($file)) {
+            $data['ext']  = false;
+            $data['type'] = false;
+
+            if ($ext === 'gltf' && $this->is_valid_gltf_file($file, $real_mime)) {
+                $data['ext']  = 'gltf';
+                $data['type'] = 'model/gltf+json';
+            }
+
+            if ($ext === 'glb' && $this->is_valid_glb_file($file, $real_mime)) {
+                $data['ext']  = 'glb';
+                $data['type'] = 'model/gltf-binary';
+            }
+        }
+
         return $data;
+    }
+
+    private function is_valid_gltf_file($file, $real_mime): bool
+    {
+        if (!is_string($file) || !is_file($file)) {
+            return false;
+        }
+
+        if ($real_mime && $real_mime !== 'application/json') {
+            error_log("[3D Viewer] GLTF com MIME real inesperado: {$real_mime}");
+        }
+
+        $contents = file_get_contents($file);
+        if (!is_string($contents)) {
+            return false;
+        }
+
+        try {
+            $document = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            return false;
+        }
+
+        return is_array($document)
+            && isset($document['asset']['version'])
+            && $document['asset']['version'] === '2.0';
+    }
+
+    private function is_valid_glb_file($file, $real_mime): bool
+    {
+        if (!is_string($file) || !is_file($file)) {
+            return false;
+        }
+
+        if ($real_mime && $real_mime !== 'model/gltf-binary') {
+            error_log("[3D Viewer] GLB com MIME real inesperado: {$real_mime}");
+        }
+
+        $contents = file_get_contents($file);
+        if (!is_string($contents) || strlen($contents) < 12) {
+            return false;
+        }
+
+        $header = unpack('a4magic/Vversion/Vlength', substr($contents, 0, 12));
+
+        return $header['magic'] === 'glTF'
+            && $header['version'] === 2
+            && $header['length'] === strlen($contents)
+            && $this->has_valid_glb_json_chunk($contents);
+    }
+
+    private function has_valid_glb_json_chunk(string $contents): bool
+    {
+        if (strlen($contents) < 20) {
+            return false;
+        }
+
+        $chunk = unpack('Vlength/Vtype', substr($contents, 12, 8));
+        if ($chunk['type'] !== 0x4e4f534a || 20 + $chunk['length'] > strlen($contents)) {
+            return false;
+        }
+
+        try {
+            $document = json_decode(substr($contents, 20, $chunk['length']), true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            return false;
+        }
+
+        return is_array($document)
+            && isset($document['asset']['version'])
+            && $document['asset']['version'] === '2.0';
     }
 
     /**

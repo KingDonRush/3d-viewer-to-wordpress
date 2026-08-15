@@ -167,10 +167,11 @@ class Widget3DViewer extends Widget_Base
     {
         ?>
         <#
-        const rawModelUrl = settings.model_file || settings.model_url || '';
-        const modelUrl = typeof rawModelUrl === 'object'
-            ? (rawModelUrl.url || rawModelUrl.value || '')
-            : rawModelUrl;
+        const rawModelFile = settings.model_file;
+        const modelFileUrl = typeof rawModelFile === 'object'
+            ? (rawModelFile?.url || rawModelFile?.value || '')
+            : rawModelFile;
+        const modelUrl = modelFileUrl || settings.model_url || '';
 
         if (!modelUrl) {
             #>
@@ -188,16 +189,10 @@ class Widget3DViewer extends Widget_Base
             model_url: String(modelUrl),
             auto_rotation: settings.auto_rotation === 'yes',
             mouse_controls: settings.mouse_controls === 'yes',
-            background_color: settings.background_color || '#f0f0f0'
+            background_color: settings.background_color ?? '#f0f0f0'
         };
-
-        view.addRenderAttribute('viewer-container', {
-            class: 'viewer-container',
-            id: widgetId,
-            'data-viewer-config': JSON.stringify(viewerData)
-        });
         #>
-        <div {{{ view.getRenderAttributeString('viewer-container') }}}>
+        <div class="viewer-container" id="{{ widgetId }}" data-viewer-config="{{ JSON.stringify(viewerData) }}">
             <div class="viewer-loading">
                 <div class="viewer-spinner"></div>
                 <div class="viewer-loading-text"><?php echo esc_html__('Carregando modelo 3D...', '3d-viewer-to-elementor'); ?></div>

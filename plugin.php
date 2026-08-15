@@ -25,6 +25,11 @@ use ViewerToElementor\Elementor\Controls\ViewerMediaControl;
  */
 final class Viewer_To_Elementor_Plugin
 {
+    private const UPLOAD_CAPACITY_TARGET_BYTES = 134217728;
+    private const UPLOAD_CAPACITY_SCHEMA_VERSION = 1;
+    private const UPLOAD_CAPACITY_OPTION = 'viewer_to_elementor_upload_capacity';
+    private const UPLOAD_CAPACITY_RECHECK_OPTION = 'viewer_to_elementor_upload_capacity_recheck';
+
     /**
      * Instância única (Singleton)
      */
@@ -54,6 +59,9 @@ final class Viewer_To_Elementor_Plugin
      */
     public function init(): void
     {
+        $this->refresh_upload_capacity_diagnostic();
+        add_action('admin_notices', [$this, 'maybe_show_upload_capacity_notice']);
+
         // Verifica se o Elementor está ativo
         if (!did_action('elementor/loaded')) {
             add_action('admin_notices', [$this, 'admin_notice_missing_elementor']);
@@ -106,6 +114,127 @@ final class Viewer_To_Elementor_Plugin
         return $mimes;
     }
 
+    public static function activate(): void
+    {
+        update_option(self::UPLOAD_CAPACITY_RECHECK_OPTION, 1, false);
+    }
+
+    private function refresh_upload_capacity_diagnostic(): void
+    {
+        if (!is_admin()) {
+            return;
+        }
+
+        $detected = $this->detect_upload_capacity();
+        $current = get_option(self::UPLOAD_CAPACITY_OPTION, []);
+        $diagnostic = [
+            'schema_version' => self::UPLOAD_CAPACITY_SCHEMA_VERSION,
+            'target_bytes' => self::UPLOAD_CAPACITY_TARGET_BYTES,
+            'effective_bytes' => $detected['effective_bytes'],
+            'status' => $detected['status'],
+            'limiting_layer' => $detected['limiting_layer'],
+            'checked_at' => $current['checked_at'] ?? gmdate('c'),
+            'needs_recheck' => false,
+        ];
+        $recheck = (bool) get_option(self::UPLOAD_CAPACITY_RECHECK_OPTION, false);
+        $relevantKeys = ['schema_version', 'target_bytes', 'effective_bytes', 'status', 'limiting_layer'];
+        $changed = $recheck;
+
+        foreach ($relevantKeys as $key) {
+            if (($current[$key] ?? null) !== $diagnostic[$key]) {
+                $changed = true;
+                break;
+            }
+        }
+
+        if ($changed || !is_array($current)) {
+            $diagnostic['checked_at'] = gmdate('c');
+            update_option(self::UPLOAD_CAPACITY_OPTION, $diagnostic, false);
+        }
+
+        if ($recheck) {
+            update_option(self::UPLOAD_CAPACITY_RECHECK_OPTION, 0, false);
+        }
+    }
+
+    private function detect_upload_capacity(): array
+    {
+        $limits = [
+            'wp_max_upload_size' => (int) wp_max_upload_size(),
+            'upload_max_filesize' => $this->parse_size_bytes((string) ini_get('upload_max_filesize')),
+            'post_max_size' => $this->parse_size_bytes((string) ini_get('post_max_size')),
+        ];
+        $effective = null;
+        $limitingLayers = [];
+
+        foreach ($limits as $layer => $bytes) {
+            if ($bytes > 0 && ($effective === null || $bytes < $effective)) {
+                $effective = $bytes;
+                $limitingLayers = [$layer];
+            } elseif ($bytes > 0 && $bytes === $effective) {
+                $limitingLayers[] = $layer;
+            }
+        }
+
+        $effective ??= 0;
+
+        return [
+            'wp_max_upload_size' => $limits['wp_max_upload_size'],
+            'upload_max_filesize' => $limits['upload_max_filesize'],
+            'post_max_size' => $limits['post_max_size'],
+            'effective_bytes' => $effective,
+            'limiting_layer' => implode(', ', $limitingLayers),
+            'status' => $this->get_upload_capacity_status($effective),
+        ];
+    }
+
+    private function get_upload_capacity_status(int $effectiveBytes): string
+    {
+        return $effectiveBytes >= self::UPLOAD_CAPACITY_TARGET_BYTES ? 'ready' : 'blocked';
+    }
+
+    private function parse_size_bytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '' || $value === '-1') {
+            return 0;
+        }
+
+        $unit = strtolower(substr($value, -1));
+        $number = (float) $value;
+        $multipliers = ['k' => 1024, 'm' => 1024 ** 2, 'g' => 1024 ** 3, 't' => 1024 ** 4];
+
+        return (int) ($number * ($multipliers[$unit] ?? 1));
+    }
+
+    private function maybe_show_upload_capacity_notice(): void
+    {
+        $diagnostic = get_option(self::UPLOAD_CAPACITY_OPTION, []);
+        if (!is_array($diagnostic) || !$this->should_show_upload_capacity_notice($diagnostic, current_user_can('manage_options'))) {
+            return;
+        }
+
+        $effective = size_format((int) ($diagnostic['effective_bytes'] ?? 0));
+        $target = size_format(self::UPLOAD_CAPACITY_TARGET_BYTES);
+        $layer = $diagnostic['limiting_layer'] ?: __('unknown layer', '3d-viewer-to-elementor');
+        printf(
+            '<div class="notice notice-warning"><p>%s</p></div>',
+            esc_html(
+                sprintf(
+                    __('3D Viewer uploads target %1$s, but this environment allows %2$s. Limiting layer: %3$s. Adjust PHP, webserver, or hosting configuration; the plugin cannot exceed this limit by itself.', '3d-viewer-to-elementor'),
+                    $target,
+                    $effective,
+                    $layer
+                )
+            )
+        );
+    }
+
+    private function should_show_upload_capacity_notice(array $diagnostic, bool $canManage): bool
+    {
+        return $canManage && ($diagnostic['status'] ?? '') === 'blocked';
+    }
+
     /**
      * Corrige a detecção MIME do WordPress para arquivos ZIP
      */
@@ -144,6 +273,11 @@ final class Viewer_To_Elementor_Plugin
             return false;
         }
 
+        $fileSize = filesize($file);
+        if ($fileSize === false || !$this->has_gltf_memory_budget($fileSize)) {
+            return false;
+        }
+
         if ($real_mime && $real_mime !== 'application/json') {
             error_log("[3D Viewer] GLTF com MIME real inesperado: {$real_mime}");
         }
@@ -174,32 +308,52 @@ final class Viewer_To_Elementor_Plugin
             error_log("[3D Viewer] GLB com MIME real inesperado: {$real_mime}");
         }
 
-        $contents = file_get_contents($file);
-        if (!is_string($contents) || strlen($contents) < 12) {
-            return false;
-        }
-
-        $header = unpack('a4magic/Vversion/Vlength', substr($contents, 0, 12));
-
-        return $header['magic'] === 'glTF'
-            && $header['version'] === 2
-            && $header['length'] === strlen($contents)
-            && $this->has_valid_glb_json_chunk($contents);
-    }
-
-    private function has_valid_glb_json_chunk(string $contents): bool
-    {
-        if (strlen($contents) < 20) {
-            return false;
-        }
-
-        $chunk = unpack('Vlength/Vtype', substr($contents, 12, 8));
-        if ($chunk['type'] !== 0x4e4f534a || 20 + $chunk['length'] > strlen($contents)) {
+        $fileSize = filesize($file);
+        $handle = fopen($file, 'rb');
+        if ($fileSize === false || $fileSize < 20 || $handle === false) {
             return false;
         }
 
         try {
-            $document = json_decode(substr($contents, 20, $chunk['length']), true, 512, JSON_THROW_ON_ERROR);
+            $headerContents = fread($handle, 12);
+            if (!is_string($headerContents) || strlen($headerContents) !== 12) {
+                return false;
+            }
+
+            $header = unpack('a4magic/Vversion/Vlength', $headerContents);
+            if (
+                $header['magic'] !== 'glTF'
+                || $header['version'] !== 2
+                || $header['length'] !== $fileSize
+            ) {
+                return false;
+            }
+
+            $chunkHeaderContents = fread($handle, 8);
+            if (!is_string($chunkHeaderContents) || strlen($chunkHeaderContents) !== 8) {
+                return false;
+            }
+
+            $chunk = unpack('Vlength/Vtype', $chunkHeaderContents);
+            if ($chunk['type'] !== 0x4e4f534a || $chunk['length'] > $fileSize - 20) {
+                return false;
+            }
+
+            $jsonContents = fread($handle, $chunk['length']);
+            if (!is_string($jsonContents) || strlen($jsonContents) !== $chunk['length']) {
+                return false;
+            }
+
+            return $this->has_valid_glb_json_chunk($jsonContents);
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    private function has_valid_glb_json_chunk(string $contents): bool
+    {
+        try {
+            $document = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $exception) {
             return false;
         }
@@ -207,6 +361,38 @@ final class Viewer_To_Elementor_Plugin
         return is_array($document)
             && isset($document['asset']['version'])
             && $document['asset']['version'] === '2.0';
+    }
+
+    private function has_gltf_memory_budget(int $fileSize): bool
+    {
+        $memoryLimit = ini_get('memory_limit');
+        if ($memoryLimit === false || $memoryLimit === '' || $memoryLimit === '-1') {
+            return true;
+        }
+
+        $limitBytes = $this->parse_memory_limit($memoryLimit);
+        $readAndDecodeBudget = ($fileSize * 3) + (1024 * 1024);
+
+        return memory_get_usage(true) + $readAndDecodeBudget <= $limitBytes;
+    }
+
+    private function parse_memory_limit(string $memoryLimit): int
+    {
+        $value = trim($memoryLimit);
+        $unit = strtolower(substr($value, -1));
+        $number = (float) $value;
+
+        if ($unit === 'g') {
+            $number *= 1024;
+        }
+        if ($unit === 'm' || $unit === 'g') {
+            $number *= 1024;
+        }
+        if ($unit === 'k' || $unit === 'm' || $unit === 'g') {
+            $number *= 1024;
+        }
+
+        return (int) $number;
     }
 
     /**
@@ -283,4 +469,5 @@ final class Viewer_To_Elementor_Plugin
 /**
  * Inicializa o plugin
  */
+register_activation_hook(__FILE__, ['Viewer_To_Elementor_Plugin', 'activate']);
 Viewer_To_Elementor_Plugin::instance();

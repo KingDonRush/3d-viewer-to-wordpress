@@ -40,14 +40,39 @@ function registerElementorHandler() {
             HandlerBase.prototype.onInit.apply(this, arguments);
 
             const container = this.elements.$container.get(0);
+            const wrapper = this.$element?.get(0);
             if (container) {
                 initialiseContainer(container, { force: true });
+                this.viewerInteractionActive = false;
+                this.onViewerPointerDown = () => {
+                    this.viewerInteractionActive = true;
+                };
+                this.onViewerPointerEnd = () => {
+                    this.viewerInteractionActive = false;
+                };
+                this.onViewerDragStart = (event) => {
+                    if (this.viewerInteractionActive) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                };
+
+                container.addEventListener('pointerdown', this.onViewerPointerDown);
+                wrapper?.addEventListener('dragstart', this.onViewerDragStart, true);
+                document.addEventListener('pointerup', this.onViewerPointerEnd);
+                document.addEventListener('pointercancel', this.onViewerPointerEnd);
             }
         },
 
         onDestroy() {
             const container = this.elements.$container.get(0);
+            const wrapper = this.$element?.get(0);
             if (container) {
+                container.removeEventListener('pointerdown', this.onViewerPointerDown);
+                wrapper?.removeEventListener('dragstart', this.onViewerDragStart, true);
+                document.removeEventListener('pointerup', this.onViewerPointerEnd);
+                document.removeEventListener('pointercancel', this.onViewerPointerEnd);
+                this.viewerInteractionActive = false;
                 teardownContainer(container);
             }
 

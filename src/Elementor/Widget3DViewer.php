@@ -180,25 +180,26 @@ class Widget3DViewer extends Widget_Base
                 <p style="color:#666;margin:0;"><?php echo esc_html__('Selecione um modelo 3D (.zip/.glb/.gltf).', '3d-viewer-to-elementor'); ?></p>
             </div>
             <#
-            return;
-        }
-
-        const widgetId = 'viewer-' + view.getID();
-        const viewerData = {
-            widget_id: widgetId,
-            model_url: String(modelUrl),
-            auto_rotation: settings.auto_rotation === 'yes',
-            mouse_controls: settings.mouse_controls === 'yes',
-            background_color: settings.background_color ?? '#f0f0f0'
-        };
-        #>
-        <div class="viewer-container" id="{{ widgetId }}" data-viewer-config="{{ JSON.stringify(viewerData) }}">
-            <div class="viewer-loading">
-                <div class="viewer-spinner"></div>
-                <div class="viewer-loading-text"><?php echo esc_html__('Carregando modelo 3D...', '3d-viewer-to-elementor'); ?></div>
+        } else {
+            const widgetId = 'viewer-' + view.getID();
+            const viewerData = {
+                widget_id: widgetId,
+                model_url: String(modelUrl),
+                auto_rotation: settings.auto_rotation === 'yes',
+                mouse_controls: settings.mouse_controls === 'yes',
+                background_color: settings.background_color ?? '#f0f0f0'
+            };
+            #>
+            <div class="viewer-container" id="{{ widgetId }}" data-viewer-config="{{ JSON.stringify(viewerData) }}">
+                <div class="viewer-loading">
+                    <div class="viewer-spinner"></div>
+                    <div class="viewer-loading-text"><?php echo esc_html__('Carregando modelo 3D...', '3d-viewer-to-elementor'); ?></div>
+                </div>
+                <canvas class="viewer-canvas"></canvas>
             </div>
-            <canvas class="viewer-canvas"></canvas>
-        </div>
+            <#
+        }
+        #>
         <?php
     }
 }

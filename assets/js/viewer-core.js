@@ -32,9 +32,28 @@ export class Viewer3D {
         this.renderer = null;
         this.controls = null;
         this.model = null;
+        this.meshBounds = [];
+        this.collisionBoxes = [];
+        this.globalBounds = null;
+        this.globalCenter = null;
+        this.globalDiagonal = 0;
+        this.clearance = 0;
+        this.geometryTolerance = 0;
+        this.lastAcceptedCamera = null;
+        this.lastAcceptedTarget = null;
         this.frameId = null;
         this.resizeObserver = null;
         this.handleResize = () => this.onResize();
+        this.handleControlsChange = () => this.handleControlsChangeEvent();
+        this.controlsChangeAttached = false;
+        this.handlingChange = false;
+        this.cameraForward = new THREE.Vector3();
+        this.rayDirection = new THREE.Vector3();
+        this.segmentDelta = new THREE.Vector3();
+        this.targetDelta = new THREE.Vector3();
+        this.boxCenter = new THREE.Vector3();
+        this.boxExitDirection = new THREE.Vector3();
+        this.nearCorner = new THREE.Vector3();
 
         this.init();
     }
@@ -255,25 +274,344 @@ export class Viewer3D {
             return;
         }
 
-        const box = new THREE.Box3().setFromObject(this.model);
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
+        this.captureGeometryBounds();
+        if (!this.globalBounds || !this.globalCenter) {
+            return;
+        }
+
+        const size = this.globalBounds.getSize(new THREE.Vector3());
 
         const maxDim = Math.max(size.x, size.y, size.z);
         const fov = (this.camera.fov * Math.PI) / 180;
         const distance = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5;
 
         this.camera.position.set(
-            center.x,
-            center.y,
-            center.z + (Number.isFinite(distance) ? distance : 5)
+            this.globalCenter.x,
+            this.globalCenter.y,
+            this.globalCenter.z + (Number.isFinite(distance) ? distance : 5)
         );
-        this.camera.lookAt(center);
+        this.camera.lookAt(this.globalCenter);
 
         if (this.controls) {
-            this.controls.target.copy(center);
+            this.controls.enablePan = true;
+            this.controls.target.copy(this.globalCenter);
+            this.controls.cursor.copy(this.globalCenter);
+            this.controls.maxTargetRadius = this.globalDiagonal / 2;
             this.controls.update();
+            this.addControlsChangeListener();
+            this.lastAcceptedCamera = this.camera.position.clone();
+            this.lastAcceptedTarget = this.controls.target.clone();
         }
+
+        this.updateDirectionalMinDistance();
+        this.updateNearPlane();
+    }
+
+    captureGeometryBounds() {
+        this.model.updateMatrixWorld(true);
+        const meshBounds = [];
+        this.model.traverse((child) => {
+            if (!child.isMesh) {
+                return;
+            }
+
+            if (!child.geometry.boundingBox) {
+                child.geometry.computeBoundingBox();
+            }
+
+            const meshBox = child.geometry.boundingBox
+                .clone()
+                .applyMatrix4(child.matrixWorld);
+            if (!meshBox.isEmpty()) {
+                meshBounds.push(meshBox);
+            }
+        });
+
+        if (!meshBounds.length) {
+            return;
+        }
+
+        const globalBounds = new THREE.Box3();
+        for (const meshBox of meshBounds) {
+            globalBounds.union(meshBox);
+        }
+
+        const globalSize = globalBounds.getSize(new THREE.Vector3());
+        const globalDiagonal = globalSize.length();
+        if (!Number.isFinite(globalDiagonal) || globalDiagonal <= 0) {
+            return;
+        }
+
+        this.globalBounds = globalBounds;
+        this.globalCenter = globalBounds.getCenter(new THREE.Vector3());
+        this.globalDiagonal = globalDiagonal;
+        this.clearance = globalDiagonal / 65536;
+        this.geometryTolerance = this.clearance / 4;
+        this.meshBounds = meshBounds;
+        this.collisionBoxes = meshBounds.map((meshBox) =>
+            meshBox.clone().expandByScalar(this.clearance)
+        );
+    }
+
+    addControlsChangeListener() {
+        if (!this.controls || this.controlsChangeAttached) {
+            return;
+        }
+
+        this.controls.addEventListener('change', this.handleControlsChange);
+        this.controlsChangeAttached = true;
+    }
+
+    handleControlsChangeEvent() {
+        if (this.handlingChange) {
+            return;
+        }
+
+        this.handlingChange = true;
+        try {
+            this.resolveSweptCollision();
+            this.updateDirectionalMinDistance();
+            this.updateNearPlane();
+
+            if (this.lastAcceptedCamera && this.lastAcceptedTarget && this.controls) {
+                this.lastAcceptedCamera.copy(this.camera.position);
+                this.lastAcceptedTarget.copy(this.controls.target);
+            }
+        } finally {
+            this.handlingChange = false;
+        }
+    }
+
+    getRayBoxInterval(origin, direction, box) {
+        let enter = -Infinity;
+        let exit = Infinity;
+
+        for (const axis of ['x', 'y', 'z']) {
+            const directionComponent = direction[axis];
+            const originComponent = origin[axis];
+            const minimum = box.min[axis];
+            const maximum = box.max[axis];
+
+            if (Math.abs(directionComponent) <= Number.EPSILON) {
+                if (originComponent < minimum || originComponent > maximum) {
+                    return null;
+                }
+                continue;
+            }
+
+            const first = (minimum - originComponent) / directionComponent;
+            const second = (maximum - originComponent) / directionComponent;
+            enter = Math.max(enter, Math.min(first, second));
+            exit = Math.min(exit, Math.max(first, second));
+
+            if (enter > exit) {
+                return null;
+            }
+        }
+
+        return { enter, exit };
+    }
+
+    getSegmentEnter(start, end, box) {
+        this.segmentDelta.copy(end).sub(start);
+        const length = this.segmentDelta.length();
+        if (length <= Number.EPSILON) {
+            return null;
+        }
+
+        this.rayDirection.copy(this.segmentDelta).multiplyScalar(1 / length);
+        const interval = this.getRayBoxInterval(start, this.rayDirection, box);
+        if (!interval || interval.exit < 0 || interval.enter > length) {
+            return null;
+        }
+
+        return Math.max(0, interval.enter) / length;
+    }
+
+    moveOutOfCollisionBox(box) {
+        if (!this.camera || !this.controls) {
+            return;
+        }
+
+        box.getCenter(this.boxCenter);
+        this.boxExitDirection.copy(this.camera.position).sub(this.boxCenter);
+        if (this.boxExitDirection.lengthSq() <= Number.EPSILON) {
+            this.boxExitDirection.copy(this.camera.position).sub(this.controls.target);
+        }
+        if (this.boxExitDirection.lengthSq() <= Number.EPSILON) {
+            this.boxExitDirection.set(1, 0, 0);
+        }
+        this.boxExitDirection.normalize();
+
+        let exitDistance = Infinity;
+        for (const axis of ['x', 'y', 'z']) {
+            const component = this.boxExitDirection[axis];
+            if (Math.abs(component) <= Number.EPSILON) {
+                continue;
+            }
+
+            const boundary = component > 0 ? box.max[axis] : box.min[axis];
+            const distance = (boundary - this.camera.position[axis]) / component;
+            if (distance >= 0) {
+                exitDistance = Math.min(exitDistance, distance);
+            }
+        }
+
+        if (!Number.isFinite(exitDistance)) {
+            return;
+        }
+
+        const correction = exitDistance + this.geometryTolerance;
+        this.camera.position.addScaledVector(this.boxExitDirection, correction);
+        this.controls.target.addScaledVector(this.boxExitDirection, correction);
+    }
+
+    resolveSweptCollision() {
+        if (!this.camera || !this.controls || !this.lastAcceptedCamera || !this.lastAcceptedTarget) {
+            return;
+        }
+
+        let escapedCollisionBox = false;
+        for (const box of this.collisionBoxes) {
+            if (box.containsPoint(this.camera.position)) {
+                this.moveOutOfCollisionBox(box);
+                escapedCollisionBox = true;
+            }
+        }
+
+        if (escapedCollisionBox) {
+            return;
+        }
+
+        let earliestEnter = null;
+        for (const box of this.collisionBoxes) {
+            const enter = this.getSegmentEnter(this.lastAcceptedCamera, this.camera.position, box);
+            if (enter !== null && (earliestEnter === null || enter < earliestEnter)) {
+                earliestEnter = enter;
+            }
+        }
+
+        if (earliestEnter === null) {
+            return;
+        }
+
+        this.segmentDelta.copy(this.camera.position).sub(this.lastAcceptedCamera);
+        const cameraDistance = this.segmentDelta.length();
+        const safeProgress = Math.max(
+            0,
+            earliestEnter - this.geometryTolerance / cameraDistance
+        );
+        this.targetDelta.copy(this.controls.target).sub(this.lastAcceptedTarget);
+        this.camera.position
+            .copy(this.lastAcceptedCamera)
+            .addScaledVector(this.segmentDelta, safeProgress);
+        this.controls.target
+            .copy(this.lastAcceptedTarget)
+            .addScaledVector(this.targetDelta, safeProgress);
+    }
+
+    updateDirectionalMinDistance() {
+        if (!this.camera || !this.controls || !this.collisionBoxes.length) {
+            return;
+        }
+
+        this.rayDirection.copy(this.camera.position).sub(this.controls.target);
+        const currentDistance = this.rayDirection.length();
+        if (currentDistance <= Number.EPSILON) {
+            return;
+        }
+        this.rayDirection.multiplyScalar(1 / currentDistance);
+
+        let minDistance = this.clearance;
+        for (const box of this.collisionBoxes) {
+            const interval = this.getRayBoxInterval(
+                this.controls.target,
+                this.rayDirection,
+                box
+            );
+            if (!interval || interval.exit <= 0 || interval.enter >= currentDistance) {
+                continue;
+            }
+
+            minDistance = Math.max(
+                minDistance,
+                interval.exit + this.geometryTolerance
+            );
+        }
+
+        this.controls.minDistance = minDistance;
+        if (currentDistance < minDistance) {
+            this.camera.position
+                .copy(this.controls.target)
+                .addScaledVector(this.rayDirection, minDistance);
+        }
+    }
+
+    updateNearPlane() {
+        if (!this.camera || !this.meshBounds.length || this.globalDiagonal <= 0) {
+            return;
+        }
+
+        this.camera.getWorldDirection(this.cameraForward);
+        const tanV = Math.tan((this.camera.fov * Math.PI) / 360);
+        const tanH = this.camera.aspect * tanV;
+        const cosThetaCorner = 1 / Math.sqrt(1 + tanH ** 2 + tanV ** 2);
+        let dSafe = Infinity;
+
+        for (const box of this.meshBounds) {
+            let a = Infinity;
+            let b = -Infinity;
+            for (const x of [box.min.x, box.max.x]) {
+                for (const y of [box.min.y, box.max.y]) {
+                    for (const z of [box.min.z, box.max.z]) {
+                        const depth = this.nearCorner
+                            .set(x, y, z)
+                            .sub(this.camera.position)
+                            .dot(this.cameraForward);
+                        a = Math.min(a, depth);
+                        b = Math.max(b, depth);
+                    }
+                }
+            }
+
+            if (b <= 0) {
+                continue;
+            }
+
+            const delta = box.distanceToPoint(this.camera.position);
+            const d = Math.max(a, delta * cosThetaCorner);
+            if (Number.isFinite(d) && d > 0) {
+                dSafe = Math.min(dSafe, d);
+            }
+        }
+
+        if (!Number.isFinite(dSafe) || dSafe <= 0) {
+            return;
+        }
+
+        const alpha = 0.75;
+        const near = alpha * dSafe;
+        if (!(near > 0 && near < dSafe)) {
+            return;
+        }
+
+        const tolerance = Math.max(
+            this.clearance / 4,
+            64 * Number.EPSILON * Math.max(
+                this.globalDiagonal,
+                Math.abs(this.camera.near),
+                Math.abs(near)
+            )
+        );
+        if (
+            Math.abs(this.camera.near - near) <= tolerance &&
+            this.camera.near < dSafe
+        ) {
+            return;
+        }
+
+        this.camera.near = near;
+        this.camera.updateProjectionMatrix();
     }
 
     animate() {
@@ -370,6 +708,11 @@ export class Viewer3D {
         }
 
         if (this.controls) {
+            if (this.controlsChangeAttached) {
+                this.controls.removeEventListener('change', this.handleControlsChange);
+                this.controlsChangeAttached = false;
+            }
+
             this.controls.dispose();
             this.controls = null;
         }
@@ -379,6 +722,17 @@ export class Viewer3D {
             this.disposeObject(this.model);
             this.model = null;
         }
+
+        this.meshBounds = [];
+        this.collisionBoxes = [];
+        this.globalBounds = null;
+        this.globalCenter = null;
+        this.globalDiagonal = 0;
+        this.clearance = 0;
+        this.geometryTolerance = 0;
+        this.lastAcceptedCamera = null;
+        this.lastAcceptedTarget = null;
+        this.handlingChange = false;
 
         if (this.renderer) {
             this.renderer.dispose();
@@ -590,4 +944,3 @@ export function initAll(root = document) {
         initialiseContainer(container);
     });
 }
-

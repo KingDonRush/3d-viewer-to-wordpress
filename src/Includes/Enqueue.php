@@ -12,14 +12,26 @@ defined('ABSPATH') || exit;
 
 class Enqueue
 {
-    private static function get_import_map_markup(): string
+    private static function get_asset_version(string $relative_path): string
     {
+        return (string) filemtime(dirname(__DIR__, 2) . '/' . $relative_path);
+    }
+
+    private static function get_import_map_markup(string $plugin_url): string
+    {
+        $viewer_core_url = add_query_arg(
+            'ver',
+            self::get_asset_version('assets/js/viewer-core.js'),
+            $plugin_url . 'assets/js/viewer-core.js'
+        );
+
         return '<script type="importmap">
         {
           "imports": {
             "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
             "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/",
-            "jszip": "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm"
+            "jszip": "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm",
+            "viewer-core": "' . esc_url($viewer_core_url) . '"
           }
         }
         </script>';
@@ -36,12 +48,13 @@ class Enqueue
         }
 
         $plugin_url = plugin_dir_url(__DIR__) . '../';
+        $viewer_frontend_version = self::get_asset_version('assets/js/viewer-frontend.js');
 
         /**
          * 🧩 Import Map — apenas onde o preview do widget é renderizado
          */
-        add_action('wp_head', function () {
-            echo self::get_import_map_markup();
+        add_action('wp_head', function () use ($plugin_url) {
+            echo self::get_import_map_markup($plugin_url);
         });
 
         /**
@@ -51,7 +64,7 @@ class Enqueue
             'viewer-to-elementor-frontend',
             $plugin_url . 'assets/js/viewer-frontend.js',
             [],
-            Config::VERSION,
+            $viewer_frontend_version,
             true
         );
 

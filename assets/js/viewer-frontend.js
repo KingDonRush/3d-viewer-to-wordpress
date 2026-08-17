@@ -5,7 +5,7 @@ import {
     VIEWER_SELECTOR,
     initialiseContainer,
     teardownContainer
-} from './viewer-core.js';
+} from 'viewer-core';
 
 let handlerRegistered = false;
 

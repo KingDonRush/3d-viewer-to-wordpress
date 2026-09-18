@@ -5,9 +5,10 @@ ZIP packages in WordPress pages. A custom media control connects uploads to a
 Three.js viewer, with editor controls and a frontend lifecycle that handles
 Elementor rerenders and history changes.
 
-![Orbiting a GLB model in the Elementor 3D Viewer](docs/media/elementor-3d-viewer.gif)
+![Model selection, widget controls and 3D interaction inside the Elementor editor](docs/media/elementor-3d-viewer.gif)
 
-Orbit a GLB model rendered by the Elementor widget in an existing WordPress page.
+Select a model, inspect its display settings and orbit the live preview inside
+the Elementor editor.
 Model: [A Beautiful Game](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ABeautifulGame),
 © 2020 ASWF / MaterialX Project; glTF conversion © 2022 Ed Mackey,
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

@@ -1,13 +1,18 @@
 # Elementor viewer interaction
 
-`elementor-3d-viewer.gif` shows three mouse drags orbiting the existing GLB model
-on a local WordPress page. The public repository plugin was temporarily mounted
-into that installation for capture; the original local plugin mount was restored
-afterward. The page, model selection, background and widget settings were retained.
+`elementor-3d-viewer.gif` records the Elementor editor on an existing local
+WordPress page. It shows the selected GLB file, opening the display-settings panel,
+and mouse drags orbiting the live model preview. The background was changed from
+red to light gray through the widget's color control and saved to that local page.
 
-The recording is cropped to the viewer. Loading time and the site's viewport debug
-label are outside the clip. The animation shows frontend orbit controls, not the
-Elementor editor or experimental authoring features.
+The public repository plugin was temporarily mounted into the installation for
+capture; the original local plugin mount was restored afterward. No experimental
+authoring features or local source changes are shown.
+
+The nine-second recording includes the editor toolbar and widget controls. It is
+cropped below the widget to exclude unrelated empty page sections. Existing UI
+labels retain their installed language. No screens or interaction results were
+replaced.
 
 Model: [A Beautiful Game](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ABeautifulGame).
 Original model © 2020 ASWF / MaterialX Project; glTF conversion © 2022 Ed Mackey.

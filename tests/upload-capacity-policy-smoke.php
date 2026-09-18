@@ -15,6 +15,7 @@ try {
 
     $reflection = new ReflectionClass('Viewer_To_Elementor_Plugin');
     $plugin = $reflection->newInstanceWithoutConstructor();
+    $assert('WordPress can invoke notice callback', true, is_callable([$plugin, 'maybe_show_upload_capacity_notice']));
     $parseSize = $reflection->getMethod('parse_size_bytes');
     $parseSize->setAccessible(true);
     $capacityStatus = $reflection->getMethod('get_upload_capacity_status');

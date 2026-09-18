@@ -127,6 +127,7 @@ final class Viewer_To_Elementor_Plugin
 
         $detected = $this->detect_upload_capacity();
         $current = get_option(self::UPLOAD_CAPACITY_OPTION, []);
+        $current = is_array($current) ? $current : [];
         $diagnostic = [
             'schema_version' => self::UPLOAD_CAPACITY_SCHEMA_VERSION,
             'target_bytes' => self::UPLOAD_CAPACITY_TARGET_BYTES,
@@ -207,7 +208,7 @@ final class Viewer_To_Elementor_Plugin
         return (int) ($number * ($multipliers[$unit] ?? 1));
     }
 
-    private function maybe_show_upload_capacity_notice(): void
+    public function maybe_show_upload_capacity_notice(): void
     {
         $diagnostic = get_option(self::UPLOAD_CAPACITY_OPTION, []);
         if (!is_array($diagnostic) || !$this->should_show_upload_capacity_notice($diagnostic, current_user_can('manage_options'))) {
@@ -216,7 +217,7 @@ final class Viewer_To_Elementor_Plugin
 
         $effective = size_format((int) ($diagnostic['effective_bytes'] ?? 0));
         $target = size_format(self::UPLOAD_CAPACITY_TARGET_BYTES);
-        $layer = $diagnostic['limiting_layer'] ?: __('unknown layer', '3d-viewer-to-elementor');
+        $layer = ($diagnostic['limiting_layer'] ?? '') ?: __('unknown layer', '3d-viewer-to-elementor');
         printf(
             '<div class="notice notice-warning"><p>%s</p></div>',
             esc_html(
